@@ -4,274 +4,291 @@
 #include <GL/glut.h>
 #endif
 
+#include <windows.h>
 #include <stdlib.h>
+#include <math.h>
 
-// Train movement
-float trainX = -40;
-float wheelRotate = 0;
 
-// Camera
-float camX = 5;
-float camY = 5;
-float camZ = 15;
+float trainX = -70.0f;     // Starting further back to accommodate longer train
+float wheelRotate = 0.0f;
+bool isMoving = true;
 
-// ----------------------------------------------------
-// Resize
-// ----------------------------------------------------
-void resize(int width, int height)
-{
-    if(height == 0)
-        height = 1;
+// Camera configuration (Orbit angles and distance)
+float camAngleX = 12.0f;
+float camAngleY = 40.0f;   // Inverted angle to view the train moving forward smoothly
+float camRadius = 28.0f;   // Zoomed out slightly to fit more compartments in view
 
+// Particle structure for more realistic smoke puffs
+struct SmokeParticle {
+    float xOffset;
+    float yOffset;
+    float size;
+    float alpha;
+};
+const int MAX_SMOKE = 12;
+SmokeParticle smokeTrail[MAX_SMOKE];
+
+
+void resize(int width, int height) {
+    if(height == 0) height = 1;
     float ratio = (float)width / (float)height;
 
     glViewport(0, 0, width, height);
-
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-
-    gluPerspective(60, ratio, 1, 200);
-
+    gluPerspective(55, ratio, 1, 500);
     glMatrixMode(GL_MODELVIEW);
 }
 
-// ----------------------------------------------------
-// Wheels
-// ----------------------------------------------------
-void wheel(float x, float y, float z)
-{
+
+void drawCube(float w, float h, float d) {
     glPushMatrix();
-
-    glTranslatef(x, y, z);
-
-    glRotatef(wheelRotate, 0, 0, 1);
-
-    glColor3f(0, 0, 0);
-
-    glutSolidTorus(0.1, 0.3, 20, 20);
-
+    glScalef(w, h, d);
+    glutSolidCube(1.0f);
     glPopMatrix();
 }
 
-// ----------------------------------------------------
-// Engine
-// ----------------------------------------------------
-void engine()
-{
-    // Main body
-    glPushMatrix();
-
-    glColor3f(0.8, 0, 0);
-
-    glScalef(3, 1, 1);
-
-    glutSolidCube(1);
-
-    glPopMatrix();
-
-    // Cabin
-    glPushMatrix();
-
-    glTranslatef(0.7, 0.8, 0);
-
-    glColor3f(0, 0, 1);
-
-    glScalef(1.5, 1, 1);
-
-    glutSolidCube(1);
-
-    glPopMatrix();
-
-    // Chimney
-    glPushMatrix();
-
-    glTranslatef(-1, 1, 0);
-
-    glRotatef(-90, 1, 0, 0);
-
-    glColor3f(0.2, 0.2, 0.2);
-
+void drawCylinder(float baseRad, float topRad, float len, int slices) {
     GLUquadric *q = gluNewQuadric();
-
-    gluCylinder(q, 0.2, 0.2, 1, 20, 20);
-
-    glPopMatrix();
-
-    // Wheels
-    wheel(-1, -0.7, 0.6);
-    wheel(1, -0.7, 0.6);
-    wheel(-1, -0.7, -0.6);
-    wheel(1, -0.7, -0.6);
+    gluCylinder(q, baseRad, topRad, len, slices, 20);
+    gluDeleteQuadric(q);
 }
 
-// ----------------------------------------------------
-// Compartment
-// ----------------------------------------------------
-void compartment()
-{
-    // Body
+void drawWheel(float radius, float width) {
     glPushMatrix();
+    glRotatef(wheelRotate, 0.0f, 0.0f, 1.0f);
+    glColor3f(0.12f, 0.12f, 0.12f);
+    glutSolidTorus(width / 2.0f, radius - (width / 2.0f), 20, 20);
 
-    glColor3f(0.1, 0.7, 0.2);
-
-    glScalef(3, 1, 1);
-
-    glutSolidCube(1);
-
+    // Spokes
+    glColor3f(0.25f, 0.15f, 0.1f);
+    glBegin(GL_LINES);
+    for (int i = 0; i < 8; i++) {
+        float angle = i * 3.14159f / 4.0f;
+        glVertex3f(0.0f, 0.0f, 0.0f);
+        glVertex3f(cos(angle) * radius, sin(angle) * radius, 0.0f);
+    }
+    glEnd();
     glPopMatrix();
-
-    // Roof
-    glPushMatrix();
-
-    glTranslatef(0, 0.8, 0);
-
-    glColor3f(0.3, 0.3, 0.3);
-
-    glScalef(3.2, 0.3, 1.2);
-
-    glutSolidCube(1);
-
-    glPopMatrix();
-
-    // Wheels
-    wheel(-1, -0.7, 0.6);
-    wheel(1, -0.7, 0.6);
-    wheel(-1, -0.7, -0.6);
-    wheel(1, -0.7, -0.6);
 }
 
-// ----------------------------------------------------
-// Track
-// ----------------------------------------------------
-void track()
-{
-    // Rails
-    glColor3f(0.3, 0.3, 0.3);
 
-    // Left rail
+void steamEngine() {
+    // 1. Heavy Base Chassis
+    glColor3f(0.15f, 0.15f, 0.15f);
     glPushMatrix();
-
-    glTranslatef(0, -1, -0.7);
-
-    glScalef(100, 0.1, 0.1);
-
-    glutSolidCube(1);
-
+    glTranslatef(0.0f, -0.4f, 0.0f);
+    drawCube(5.0f, 0.2f, 1.5f);
     glPopMatrix();
 
-    // Right rail
+    // 2. Main Boiler Cylinder (Facing rightwards)
+    glColor3f(0.45f, 0.28f, 0.2f);
     glPushMatrix();
-
-    glTranslatef(0, -1, 0.7);
-
-    glScalef(100, 0.1, 0.1);
-
-    glutSolidCube(1);
-
+    glTranslatef(0.5f, 0.3f, 0.0f);
+    glRotatef(-90.0f, 0.0f, 1.0f, 0.0f); // Flipped cylinder setup orientation
+    glTranslatef(0.0f, 0.0f, -1.4f);
+    drawCylinder(0.65f, 0.65f, 3.2f, 30);
     glPopMatrix();
 
-    // Sleepers
-    for(float i = -50; i <= 50; i += 1.5)
-    {
+    // Front Boiler Cap
+    glColor3f(0.2f, 0.2f, 0.2f);
+    glPushMatrix();
+    glTranslatef(2.3f, 0.3f, 0.0f);
+    glScalef(0.1f, 1.3f, 1.3f);
+    glutSolidSphere(0.5f, 20, 20);
+    glPopMatrix();
+
+    // Cowcatcher Front grill
+    glColor3f(0.35f, 0.22f, 0.18f);
+    glPushMatrix();
+    glTranslatef(2.6f, -0.45f, 0.0f);
+    glRotatef(-45.0f, 0.0f, 0.0f, 1.0f);
+    drawCube(0.4f, 0.4f, 1.4f);
+    glPopMatrix();
+
+    // 3. Steam Domes
+    glColor3f(0.4f, 0.25f, 0.18f);
+    float domePositions[] = {1.4f, 0.7f, 0.0f};
+    for(int i = 0; i < 3; i++) {
         glPushMatrix();
-
-        glTranslatef(i, -1.1, 0);
-
-        glColor3f(0.5, 0.3, 0.1);
-
-        glScalef(0.4, 0.1, 2);
-
-        glutSolidCube(1);
-
+        glTranslatef(domePositions[i], 0.95f, 0.0f);
+        glScalef(0.3f, 0.4f, 0.3f);
+        glutSolidSphere(0.6f, 15, 15);
         glPopMatrix();
     }
-}
 
-// ----------------------------------------------------
-// Trees
-// ----------------------------------------------------
-void tree(float x, float z)
-{
-    // Trunk
+    // 4. Smoke Stack (Chimney placed at front end)
+    glColor3f(0.15f, 0.15f, 0.15f);
     glPushMatrix();
-
-    glTranslatef(x, 0, z);
-
-    glColor3f(0.5, 0.3, 0.1);
-
-    glRotatef(-90, 1, 0, 0);
-
-    GLUquadric *q = gluNewQuadric();
-
-    gluCylinder(q, 0.2, 0.2, 2, 20, 20);
-
+    glTranslatef(1.9f, 0.8f, 0.0f);
+    glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
+    drawCylinder(0.18f, 0.25f, 0.6f, 20);
     glPopMatrix();
 
-    // Leaves
+    // 5. Driver's Cabin (Moved to back left section)
+    glColor3f(0.35f, 0.22f, 0.18f);
     glPushMatrix();
-
-    glTranslatef(x, 2.5, z);
-
-    glColor3f(0, 0.7, 0);
-
-    glutSolidSphere(1, 20, 20);
-
-    glPopMatrix();
-}
-
-// ----------------------------------------------------
-// Display
-// ----------------------------------------------------
-void display()
-{
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    glLoadIdentity();
-
-    gluLookAt(camX, camY, camZ,
-              0, 0, 0,
-              0, 1, 0);
-
-    // Ground
-    glPushMatrix();
-
-    glColor3f(0.2, 0.7, 0.2);
-
-    glTranslatef(0, -2, 0);
-
-    glScalef(150, 0.1, 40);
-
-    glutSolidCube(1);
-
+    glTranslatef(-1.8f, 0.6f, 0.0f);
+    drawCube(1.4f, 1.2f, 1.4f);
     glPopMatrix();
 
-    // Track
-    track();
+    // Cabin Roof
+    glColor3f(0.15f, 0.15f, 0.15f);
+    glPushMatrix();
+    glTranslatef(-1.75f, 1.25f, 0.0f);
+    drawCube(1.6f, 0.1f, 1.55f);
+    glPopMatrix();
 
-    // Trees
-    for(int i = -40; i <= 40; i += 10)
-    {
-        tree(i, -8);
-        tree(i, 8);
+    // Cabin Windows
+    glColor3f(0.1f, 0.1f, 0.1f);
+    glPushMatrix(); glTranslatef(-1.8f, 0.7f, 0.71f); drawCube(0.4f, 0.4f, 0.02f); glPopMatrix();
+    glPushMatrix(); glTranslatef(-1.8f, 0.7f, -0.71f); drawCube(0.4f, 0.4f, 0.02f); glPopMatrix();
+
+    // 6. Huge Locomotive Driving Wheels
+    float wheelPositionsX[] = {1.2f, 0.0f, -1.2f};
+    for(int i = 0; i < 3; i++) {
+        glPushMatrix(); glTranslatef(wheelPositionsX[i], -0.6f, 0.75f); drawWheel(0.6f, 0.12f); glPopMatrix();
+        glPushMatrix(); glTranslatef(wheelPositionsX[i], -0.6f, -0.75f); drawWheel(0.6f, 0.12f); glPopMatrix();
     }
 
-    // Whole train
+    // Front guide wheel
+    glPushMatrix(); glTranslatef(2.2f, -0.8f, 0.65f); drawWheel(0.35f, 0.1f); glPopMatrix();
+    glPushMatrix(); glTranslatef(2.2f, -0.8f, -0.65f); drawWheel(0.35f, 0.1f); glPopMatrix();
+
+    // 7. Piston rod link
+    glColor3f(0.4f, 0.4f, 0.4f);
+    glPushMatrix(); glTranslatef(0.0f, -0.6f, 0.82f); drawCube(2.6f, 0.06f, 0.04f); glPopMatrix();
+    glPushMatrix(); glTranslatef(0.0f, -0.6f, -0.82f); drawCube(2.6f, 0.06f, 0.04f); glPopMatrix();
+}
+
+
+void coalTender() {
+    glColor3f(0.15f, 0.15f, 0.15f);
+    glPushMatrix(); glTranslatef(0.0f, -0.4f, 0.0f); drawCube(3.2f, 0.2f, 1.4f); glPopMatrix();
+
+    glColor3f(0.35f, 0.22f, 0.18f);
+    glPushMatrix(); glTranslatef(0.0f, 0.2f, 0.0f); drawCube(3.0f, 0.8f, 1.3f); glPopMatrix();
+
+    glColor3f(0.08f, 0.08f, 0.08f);
+    glPushMatrix(); glTranslatef(0.0f, 0.65f, 0.0f); glScalef(2.6f, 0.2f, 1.1f); glutSolidSphere(0.5f, 10, 10); glPopMatrix();
+
+    for (float wX = -1.1f; wX <= 1.2f; wX += 0.7f) {
+        glPushMatrix(); glTranslatef(wX, -0.75f, 0.65f); drawWheel(0.4f, 0.1f); glPopMatrix();
+        glPushMatrix(); glTranslatef(wX, -0.75f, -0.65f); drawWheel(0.4f, 0.1f); glPopMatrix();
+    }
+}
+
+
+void passengerCompartment() {
+    // Main Wooden Brown Coach Body
+    glColor3f(0.42f, 0.26f, 0.18f);
     glPushMatrix();
+    glTranslatef(0.0f, 0.35f, 0.0f);
+    drawCube(4.4f, 1.2f, 1.3f);
+    glPopMatrix();
 
-    glTranslatef(trainX, 0, 0);
+    // Roof Top
+    glColor3f(0.2f, 0.2f, 0.2f);
+    glPushMatrix();
+    glTranslatef(0.0f, 1.0f, 0.0f);
+    drawCube(4.6f, 0.12f, 1.4f);
+    glPopMatrix();
 
-    // Engine
-    engine();
+    // Row of passenger side windows
+    glColor3f(0.15f, 0.15f, 0.15f);
+    for(float winX = -1.6f; winX <= 1.7f; winX += 0.8f) {
+        glPushMatrix(); glTranslatef(winX, 0.5f, 0.66f); drawCube(0.4f, 0.4f, 0.02f); glPopMatrix();
+        glPushMatrix(); glTranslatef(winX, 0.5f, -0.66f); drawCube(0.4f, 0.4f, 0.02f); glPopMatrix();
+    }
 
-    // Compartments
-    for(int i = 1; i <= 4; i++)
-    {
+    // Compartment Wheels
+    glPushMatrix(); glTranslatef(-1.5f, -0.65f, 0.6f); drawWheel(0.45f, 0.1f); glPopMatrix();
+    glPushMatrix(); glTranslatef(1.5f, -0.65f, 0.6f);  drawWheel(0.45f, 0.1f); glPopMatrix();
+    glPushMatrix(); glTranslatef(-1.5f, -0.65f, -0.6f); drawWheel(0.45f, 0.1f); glPopMatrix();
+    glPushMatrix(); glTranslatef(1.5f, -0.65f, -0.6f);  drawWheel(0.45f, 0.1f); glPopMatrix();
+}
+
+
+void drawSteamSmoke() {
+    // Setup basic transparency blending for realistic clouds
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_LIGHTING); // Disable lighting to make smoke feel volumetric
+
+    for(int i = 0; i < MAX_SMOKE; i++) {
+        glColor4f(0.4f, 0.4f, 0.4f, smokeTrail[i].alpha);
         glPushMatrix();
+        // Spawns over the chimney and shifts backward relatively as train goes right
+        glTranslatef(trainX + 1.9f + smokeTrail[i].xOffset,
+                     1.4f + smokeTrail[i].yOffset,
+                     0.0f);
+        glutSolidSphere(smokeTrail[i].size, 15, 15);
+        glPopMatrix();
+    }
 
-        glTranslatef(i * -4, 0, 0);
+    glEnable(GL_LIGHTING);
+    glDisable(GL_BLEND);
+}
 
-        compartment();
 
+void environment() {
+    // Ground
+    glColor3f(0.92f, 0.92f, 0.92f);
+    glPushMatrix(); glTranslatef(0.0f, -1.35f, 0.0f); drawCube(400.0f, 0.1f, 80.0f); glPopMatrix();
+
+    // Rails
+    glColor3f(0.4f, 0.4f, 0.4f);
+    glPushMatrix(); glTranslatef(0.0f, -1.22f, 0.65f); drawCube(400.0f, 0.08f, 0.08f); glPopMatrix();
+    glPushMatrix(); glTranslatef(0.0f, -1.22f, -0.65f); drawCube(400.0f, 0.08f, 0.08f); glPopMatrix();
+
+    // Track Ties
+    glColor3f(0.3f, 0.18f, 0.1f);
+    for(float i = -185; i <= 185; i += 3.0f) {
+        glPushMatrix(); glTranslatef(i, -1.28f, 0.0f); drawCube(0.8f, 0.06f, 2.0f); glPopMatrix();
+    }
+}
+
+
+void display() {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glLoadIdentity();
+
+    // Spherical Orbit Camera Setup
+    float radX = camAngleX * 3.14159f / 180.0f;
+    float radY = camAngleY * 3.14159f / 180.0f;
+    float posX = camRadius * cos(radX) * sin(radY);
+    float posY = camRadius * sin(radX);
+    float posZ = camRadius * cos(radX) * cos(radY);
+
+    gluLookAt(posX, posY, posZ,
+              0.0f, 0.0f, 0.0f,
+              0.0f, 1.0f, 0.0f);
+
+    environment();
+
+    // Draw active smokestack billows
+    drawSteamSmoke();
+
+    // Assembly Translation System
+    glPushMatrix();
+    glTranslatef(trainX, -0.3f, 0.0f);
+
+    // 1. Steam Locomotive Lead Head Engine
+    steamEngine();
+
+    // 2. Attached Coal Tender right behind engine
+    glPushMatrix();
+    glTranslatef(-4.3f, 0.0f, 0.0f);
+    coalTender();
+    glPopMatrix();
+
+    // 3. Multi-compartment cascade setup (Adding 3 passenger coaches)
+    int additionalCoaches = 3;
+    for(int i = 0; i < additionalCoaches; i++) {
+        glPushMatrix();
+        // Calculate offset chain behind the coal tender car
+        glTranslatef(-8.3f - (i * 4.7f), -0.1f, 0.0f);
+        passengerCompartment();
         glPopMatrix();
     }
 
@@ -280,89 +297,104 @@ void display()
     glutSwapBuffers();
 }
 
-// ----------------------------------------------------
-// Animation
-// ----------------------------------------------------
-void idle()
-{
-    trainX += 0.03;
 
-    wheelRotate -= 2;
+// ANIMATION LOGIC & SMOKE SIM
 
-    if(trainX > 60)
-        trainX = -60;
+void idle() {
+    if (isMoving) {
+        trainX += 0.08f;        // Train progresses FORWARD (Left to Right)
+        wheelRotate -= 4.0f;    // Correct rotational sync direction
 
-    glutPostRedisplay();
-}
+        // Custom physics updates for modern fluid-looking smoke tracking arrays
+        for(int i = 0; i < MAX_SMOKE; i++) {
+            smokeTrail[i].xOffset -= 0.06f; // Blow back dynamically
+            smokeTrail[i].yOffset += 0.03f; // Float upwards
+            smokeTrail[i].size    += 0.01f; // Expand naturally
+            smokeTrail[i].alpha   -= 0.015f;// Fade out slowly
 
-// ----------------------------------------------------
-// Keyboard
-// ----------------------------------------------------
-void keyboard(unsigned char key, int x, int y)
-{
-    switch(key)
-    {
-    case 27:
-    case 'q':
-        exit(0);
-        break;
+            // Reset particle if completely faded away
+            if(smokeTrail[i].alpha <= 0.0f) {
+                smokeTrail[i].xOffset = 0.0f;
+                smokeTrail[i].yOffset = 0.0f;
+                smokeTrail[i].size    = 0.2f + (rand() % 10 / 100.0f);
+                smokeTrail[i].alpha   = 0.8f;
+            }
+        }
 
-    // Camera zoom
-    case 'w':
-        camZ--;
-        break;
-
-    case 's':
-        camZ++;
-        break;
-
-    // Camera left/right
-    case 'a':
-        camX--;
-        break;
-
-    case 'd':
-        camX++;
-        break;
+        if (trainX > 160.0f) {
+            trainX = -160.0f;   // Wrap setup tracking loop borders
+        }
     }
+    glutPostRedisplay();
+}
+
+
+void keyboard(unsigned char key, int x, int y) {
+    switch (key) {
+        case 27: exit(0); break;
+        case ' ': isMoving = !isMoving; break; // Pause/Play
+        case 'w': case 'W': camRadius -= 1.0f; break; // Zoom In
+        case 's': case 'S': camRadius += 1.0f; break; // Zoom Out
+    }
+    glutPostRedisplay();
+}
+
+void specialKeys(int key, int x, int y) {
+    switch (key) {
+        case GLUT_KEY_UP:    camAngleX += 4.0f; break;
+        case GLUT_KEY_DOWN:  camAngleX -= 4.0f; break;
+        case GLUT_KEY_LEFT:  camAngleY -= 4.0f; break;
+        case GLUT_KEY_RIGHT: camAngleY += 4.0f; break;
+    }
+    if (camAngleX > 85.0f)  camAngleX = 85.0f;
+    if (camAngleX < -5.0f)  camAngleX = -5.0f;
 
     glutPostRedisplay();
 }
 
-// ----------------------------------------------------
-// Init
-// ----------------------------------------------------
-void init()
-{
-    glEnable(GL_DEPTH_TEST);
 
-    glClearColor(0.5, 0.8, 1.0, 1.0);
+void init() {
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_LIGHTING);
+    glEnable(GL_LIGHT0);
+    glEnable(GL_COLOR_MATERIAL);
+
+    GLfloat lightPos[] = {20.0f, 40.0f, 30.0f, 1.0f};
+    GLfloat lightAmbient[] = {0.45f, 0.45f, 0.45f, 1.0f};
+    GLfloat lightDiffuse[] = {0.85f, 0.85f, 0.85f, 1.0f};
+
+    glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
+    glLightfv(GL_LIGHT0, GL_AMBIENT, lightAmbient);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiffuse);
+
+    glClearColor(0.95f, 0.95f, 0.95f, 1.0f);
+
+    // Populate baseline values inside smoke arrays initial structures
+    for(int i = 0; i < MAX_SMOKE; i++) {
+        smokeTrail[i].xOffset = -i * 0.8f;
+        smokeTrail[i].yOffset = i * 0.4f;
+        smokeTrail[i].size    = 0.2f + (i * 0.1f);
+        smokeTrail[i].alpha   = 0.8f - (i * 0.07f);
+    }
 }
 
-// ----------------------------------------------------
-// Main
-// ----------------------------------------------------
-int main(int argc, char** argv)
-{
+
+int main(int argc, char** argv) {
     glutInit(&argc, argv);
-
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
-
-    glutInitWindowSize(1000, 700);
-
-    glutCreateWindow("3D Train Project");
+    glutInitWindowSize(1200, 750);
+    glutCreateWindow("Realistic 3D Steam Locomotive with Coaches");
 
     init();
 
     glutDisplayFunc(display);
-
     glutReshapeFunc(resize);
-
     glutKeyboardFunc(keyboard);
-
+    glutSpecialFunc(specialKeys);
     glutIdleFunc(idle);
 
     glutMainLoop();
-
     return 0;
 }
+
+
